@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>0/1 Knapsack - Branch and Bound Simulation</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+      padding: 20px;
+    }
+    .container {
+      max-width: 1000px;
+      margin: auto;
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    h1 {
+      text-align: center;
+    }
+    input {
+      margin: 5px;
+      padding: 5px;
+    }
+    button {
+      padding: 8px 16px;
+      margin-top: 10px;
+    }
+    .output {
+      margin-top: 20px;
+      white-space: pre-wrap;
+      background: #eef;
+      padding: 10px;
+      border-radius: 5px;
+    }
+    .visual {
+      margin-top: 20px;
+      padding: 10px;
+      background-color: #fafafa;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .node {
+      padding: 8px;
+      border: 2px solid #777;
+      border-radius: 8px;
+      background-color: #e2f0ff;
+      min-width: 120px;
+      white-space: pre-wrap;
+    }
+    .node.included {
+      border-color: green;
+      background-color: #dbffe0;
+    }
+    .node.excluded {
+      border-color: red;
+      background-color: #ffe6e6;
+    }
+    .node.current {
+      border: 3px dashed #333;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>0/1 Knapsack - Branch and Bound</h1>
+    <label>Number of Items: <input type="number" id="numItems" value="4" min="1"></label>
+    <label>Knapsack Capacity: <input type="number" id="capacity" value="15" min="1"></label>
+    <button onclick="createInputFields()">Set Items</button>
+
+    <div id="itemsInput"></div>
+    <button onclick="startSimulation()">Start Simulation</button>
+    <button onclick="nextStep()">Next Step</button>
+    <div class="output" id="output"></div>
+    <div class="visual" id="visual"></div>
+  </div>
+
+  <script>
+    let simulationQueue = [];
+    let maxProfit = 0;
+    let bestSelection = [];
+    let weights = [], values = [], n = 0, W = 0;
+    let nodeIdCounter = 0;
+
+    function createInputFields() {
+      const numItems = parseInt(document.getElementById("numItems").value);
+      const container = document.getElementById("itemsInput");
+      container.innerHTML = "";
+
+      for (let i = 0; i < numItems; i++) {
+        container.innerHTML += `
+          <div>
+            Item ${i + 1}:
+            Weight: <input type="number" id="weight${i}" value="${i * 2 + 2}" min="1">
+            Value: <input type="number" id="value${i}" value="${(i + 1) * 10}" min="1">
+          </div>
+        `;
+      }
+    }
+
+    class Node {
+      constructor(level, profit, weight, bound, selected, decision) {
+        this.level = level;
+        this.profit = profit;
+        this.weight = weight;
+        this.bound = bound;
+        this.selected = selected.slice();
+        this.decision = decision || "";
+        this.id = nodeIdCounter++;
+      }
+    }
+
+    function bound(node, n, W, weights, values) {
+      if (node.weight >= W) return 0;
+      let profit_bound = node.profit;
+      let j = node.level + 1;
+      let totweight = node.weight;
+
+      while (j < n && totweight + weights[j] <= W) {
+        totweight += weights[j];
+        profit_bound += values[j];
+        j++;
+      }
+
+      if (j < n) {
+        profit_bound += (W - totweight) * values[j] / weights[j];
+      }
+
+      return profit_bound;
+    }
+
+    function startSimulation() {
+      simulationQueue = [];
+      maxProfit = 0;
+      bestSelection = [];
+      nodeIdCounter = 0;
+      document.getElementById("output").innerText = "";
+      document.getElementById("visual").innerHTML = "";
+
+      n = parseInt(document.getElementById("numItems").value);
+      W = parseInt(document.getElementById("capacity").value);
+      weights = [], values = [];
+
+      for (let i = 0; i < n; i++) {
+        weights.push(parseInt(document.getElementById(`weight${i}`).value));
+        values.push(parseInt(document.getElementById(`value${i}`).value));
+      }
+
+      const items = Array.from({length: n}, (_, i) => ({i, w: weights[i], v: values[i]}));
+      items.sort((a, b) => b.v / b.w - a.v / a.w);
+      for (let i = 0; i < n; i++) {
+        weights[i] = items[i].w;
+        values[i] = items[i].v;
+      }
+
+      let Q = [];
+      let u = new Node(-1, 0, 0, 0, []);
+      u.bound = bound(u, n, W, weights, values);
+      Q.push(u);
+
+      simulationQueue.push({ Q, step: 0 });
+    }
+
+    function nextStep() {
+      if (simulationQueue.length === 0) return;
+
+      let state = simulationQueue.pop();
+      let Q = state.Q;
+      let step = state.step + 1;
+      if (Q.length === 0) return;
+
+      Q.sort((a, b) => b.bound - a.bound);
+      let u = Q.shift();
+
+      const output = document.getElementById("output");
+      output.innerText += `Step ${step}: Visiting Node at level ${u.level}, profit=${u.profit}, weight=${u.weight}, bound=${u.bound}\n`;
+
+      const visual = document.getElementById("visual");
+      const nodeDiv = document.createElement("div");
+      nodeDiv.className = `node current`;
+      nodeDiv.innerText = `Level: ${u.level}\nProfit: ${u.profit}\nWeight: ${u.weight}\nBound: ${u.bound}`;
+      visual.appendChild(nodeDiv);
+
+      if (u.bound > maxProfit && u.level < n - 1) {
+        // Include next item
+        let v1 = new Node(u.level + 1, u.profit + values[u.level + 1], u.weight + weights[u.level + 1], 0, u.selected, "included");
+        v1.selected.push(u.level + 1);
+        if (v1.weight <= W && v1.profit > maxProfit) {
+          maxProfit = v1.profit;
+          bestSelection = v1.selected.slice();
+        }
+        v1.bound = bound(v1, n, W, weights, values);
+        if (v1.bound > maxProfit) Q.push(v1);
+
+        const includedDiv = document.createElement("div");
+        includedDiv.className = "node included";
+        includedDiv.innerText = `Include -> Level: ${v1.level}\nProfit: ${v1.profit}\nWeight: ${v1.weight}\nBound: ${v1.bound}`;
+        visual.appendChild(includedDiv);
+
+        // Exclude next item
+        let v2 = new Node(u.level + 1, u.profit, u.weight, 0, u.selected, "excluded");
+        v2.bound = bound(v2, n, W, weights, values);
+        if (v2.bound > maxProfit) Q.push(v2);
+
+        const excludedDiv = document.createElement("div");
+        excludedDiv.className = "node excluded";
+        excludedDiv.innerText = `Exclude -> Level: ${v2.level}\nProfit: ${v2.profit}\nWeight: ${v2.weight}\nBound: ${v2.bound}`;
+        visual.appendChild(excludedDiv);
+      }
+
+      if (Q.length > 0) {
+        simulationQueue.push({ Q, step });
+      } else {
+        output.innerText += `\nSimulation Complete.\nMaximum Profit: ${maxProfit}\nSelected Items (0-based): ${bestSelection.join(", ")}`;
+        const resultDiv = document.createElement("div");
+        resultDiv.className = "output";
+        resultDiv.innerText = `Selected Items (0-based): ${bestSelection.join(", ")}`;
+        document.getElementById("visual").appendChild(resultDiv);
+      }
+    }
+  </script>
+</body>
+</html>
